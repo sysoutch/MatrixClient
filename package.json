@@ -98,10 +98,18 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "description": "",
   "devDependencies": {
     "@types/electron": "^1.6.12",
     "@types/node": "^24.0.4",
     "typescript": "^5.8.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sysoutch/MatrixClient.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sysoutch/MatrixClient/issues"
+  },
+  "homepage": "https://github.com/sysoutch/MatrixClient#readme",
+  "description": ""
 }
