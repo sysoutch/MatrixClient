@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('matrix', {
 
       getStoredRooms: () => ipcRenderer.invoke('matrix-getStoredRooms', baseUrl),
       getRoom: (roomId) => ipcRenderer.invoke('matrix-getRoom', baseUrl, roomId),
+
+      getRoomMembers: (roomId) => ipcRenderer.invoke('matrix-getRoomMembers', baseUrl, roomId)
     };
   }
 });

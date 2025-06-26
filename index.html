@@ -460,24 +460,6 @@
       margin-bottom: 16px;
       opacity: 0.3;
     }
-    
-    .material-icons {
-      font-family: 'Material Icons';
-      font-weight: normal;
-      font-style: normal;
-      font-size: 24px;
-      display: inline-block;
-      line-height: 1;
-      text-transform: none;
-      letter-spacing: normal;
-      word-wrap: normal;
-      white-space: nowrap;
-      direction: ltr;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-      -moz-osx-font-smoothing: grayscale;
-      font-feature-settings: 'liga';
-    }
 
     .spaces-tree {
       padding: 8px 0;
@@ -559,6 +541,124 @@
       background-color: rgba(110, 65, 226, 0.1);
       font-weight: 500;
     }
+
+    .messages-container {
+      position: relative;
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      background-color: #fafbfc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #messages {
+      flex: 1;
+    }
+
+    #emptyState {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    #emptyState.hidden {
+      display: none;
+    }
+
+    /* User Popup Styles */
+    .popup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .popup.hidden {
+      display: none;
+    }
+
+    .popup-content {
+      background-color: white;
+      padding: 24px;
+      border-radius: 12px;
+      width: 300px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      position: relative;
+    }
+
+    .close-button {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .user-avatar-large {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      font-weight: bold;
+      margin: 0 auto 16px;
+    }
+
+    #popupUsername {
+      text-align: center;
+      font-size: 1.25rem;
+      margin-bottom: 4px;
+    }
+
+    #popupUserId {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+      word-break: break-all;
+    }
+
+    .popup-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .action-button {
+      background-color: var(--secondary);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .action-button:hover {
+      background-color: #e2e8f0;
+    }
   </style>
 </head>
 <body>
@@ -623,8 +723,9 @@
         </div>
       </div>
       
-      <div id="messages" class="messages-container">
-        <div class="empty-state">
+      <div class="messages-container">
+        <div id="messages"></div>
+        <div id="emptyState" class="empty-state">
           <div class="empty-state-icon">
             <i class="material-icons">forum</i>
           </div>
@@ -657,6 +758,25 @@
     </div>
   </div>
   
+  <div id="userPopup" class="popup hidden">
+  <div class="popup-content">
+      <button id="closePopup" class="close-button">
+        <i class="material-icons">close</i>
+      </button>
+      <div class="user-avatar-large" id="popupAvatar"></div>
+      <h3 id="popupUsername"></h3>
+      <p id="popupUserId"></p>
+      <div class="popup-actions">
+        <button class="action-button">
+          <i class="material-icons">chat</i> Message
+        </button>
+        <button class="action-button">
+          <i class="material-icons">person_add</i> Invite
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

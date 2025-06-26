@@ -1,12 +1,12 @@
+const emptyState = document.getElementById('emptyState');
 let matrixClient;
 let currentRoomId = null;
 let currentSpaceId = null;
 let activeTab = 'spaces';
 let currentUserId = null;
+let currentMemberInfo = null;
 
-// Initialize UI
 document.addEventListener('DOMContentLoaded', () => {
-  // Tab switching
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -18,15 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       document.getElementById(`${activeTab}Tab`).classList.remove('hidden');
     });
+    const emptyState = document.getElementById('emptyState');
+    emptyState.classList.remove('hidden');
   });
 
-  const roomsTab = document.querySelector('.tab[data-tab="rooms"]');
-  if (roomsTab) {
-    roomsTab.dataset.tab = "discover";
-    roomsTab.textContent = "Discover";
-  }
-  
-  // Enable/disable message form based on room selection
   const messageInput = document.getElementById('messageInput');
   const messageSubmit = document.querySelector('#messageForm button');
   
@@ -42,22 +37,16 @@ document.getElementById('loginForm').onsubmit = async (e) => {
   const password = document.getElementById('password').value;
   
   try {
-    // Create client and login
     matrixClient = window.matrix.createClient(homeserver);
     const loginResponse = await matrixClient.login(username, password);
     currentUserId = loginResponse.user_id;
     
-    // Start client
     await matrixClient.startClient({ initialSyncLimit: 10 });
     
-    // Setup event handlers
     matrixClient.onSync((state) => {
       if (state === "PREPARED") {
-        console.log("Client prepared");
         document.getElementById('loginForm').style.display = 'none';
         document.querySelector('.app-container').style.display = 'flex';
-        
-        // Load spaces and public rooms
         loadSpaces();
         loadPublicRooms();
       }
@@ -69,7 +58,7 @@ document.getElementById('loginForm').onsubmit = async (e) => {
       }
     });
   } catch (error) {
-    console.error('Matrix client error:', error);
+    console.error('Login error:', error);
     showStatus(`Error: ${error.message}`, 'error');
   }
 };
@@ -84,16 +73,9 @@ document.getElementById('roomAddressForm').onsubmit = async (e) => {
   
   try {
     showStatus(`Joining ${roomAddress}...`, 'info');
-    
     await joinRoom(roomAddress);
-    
     showStatus(`Successfully joined room!`, 'success');
     addressInput.value = '';
-    
-    setTimeout(() => {
-      statusEl.textContent = '';
-      statusEl.className = 'status-message';
-    }, 3000);
   } catch (error) {
     console.error('Room join error:', error);
     showStatus(`Error: ${error.message}`, 'error');
@@ -102,11 +84,18 @@ document.getElementById('roomAddressForm').onsubmit = async (e) => {
 
 function toggleSpace(spaceId) {
   const spaceElement = document.querySelector(`.space-header[data-spaceid="${spaceId}"]`);
+  if (!spaceElement) return;
+  
   const caret = spaceElement.querySelector('.space-caret');
   const childrenContainer = document.querySelector(`.space-children[data-spaceid="${spaceId}"]`);
   
-  caret.classList.toggle('collapsed');
-  childrenContainer.classList.toggle('expanded');
+  if (caret) caret.classList.toggle('collapsed');
+  if (childrenContainer) childrenContainer.classList.toggle('expanded');
+}
+
+function getRoomDisplayName(room) {
+  if (!room) return 'Unknown Room';
+  return room.name || room.canonicalAlias || room.roomId;
 }
 
 async function loadSpaces() {
@@ -122,11 +111,9 @@ async function loadSpaces() {
     }
     
     for (const space of spaces) {
-      // Create space header
       const spaceHeader = document.createElement('div');
       spaceHeader.className = 'space-header';
       spaceHeader.dataset.spaceid = space.roomId;
-      // ≡
       spaceHeader.innerHTML = `
         <span class="space-caret material-icons">≡</span>
         <div class="space-icon">
@@ -136,17 +123,12 @@ async function loadSpaces() {
         <div class="space-members">${space.members}</div>
       `;
       
-      // Create children container
       const childrenContainer = document.createElement('div');
       childrenContainer.className = 'space-children';
       childrenContainer.dataset.spaceid = space.roomId;
       
-      // Add click handler to toggle expansion
-      spaceHeader.addEventListener('click', () => {
-        toggleSpace(space.roomId);
-      });
+      spaceHeader.addEventListener('click', () => toggleSpace(space.roomId));
       
-      // Create room list for this space
       try {
         const childrenData = await matrixClient.getSpaceChildren(space.roomId);
         const roomsList = document.createElement('ul');
@@ -155,30 +137,19 @@ async function loadSpaces() {
         if (childrenData.children.length === 0) {
           roomsList.innerHTML = '<div class="empty-state" style="padding: 8px 0;">No rooms</div>';
         } else {
-           // Fetch room details for each child
-          const roomDetailsPromises = childrenData.children.map(child => 
-            matrixClient.getRoom(child.roomId).catch(() => null)
-          );
-          
-          const roomDetails = await Promise.all(roomDetailsPromises);
-          
-          // Filter out deleted rooms
-          const validRooms = roomDetails.filter(child => child !== null);
-          
-          if (validRooms.length === 0) {
-            roomsList.innerHTML = '<div class="empty-state" style="padding: 8px 0;">No active rooms</div>';
-          } else {
-            validRooms.forEach(child => {
+          for (const child of childrenData.children) {
+            try {
+              const roomDetails = await matrixClient.getRoom(child.roomId);
+              if (!roomDetails) continue;
+              
               const li = document.createElement('li');
               li.className = 'room-item';
               li.dataset.roomid = child.roomId;
-              console.log('child', child);
-              const displayName = getRoomDisplayName(child);
               li.innerHTML = `
                 <div class="room-icon">
                   <i class="material-icons">#</i>
                 </div>
-                <div class="room-name">${displayName}</div>
+                <div class="room-name">${getRoomDisplayName(roomDetails)}</div>
               `;
               
               li.addEventListener('click', async (e) => {
@@ -187,132 +158,68 @@ async function loadSpaces() {
               });
               
               roomsList.appendChild(li);
-            });
+            } catch (error) {
+              console.error(`Error loading room ${child.roomId}:`, error);
+            }
           }
         }
-        
         childrenContainer.appendChild(roomsList);
       } catch (error) {
-        console.error(`Failed to load children for space ${space.roomId}:`, error);
+        console.error(`Space children error:`, error);
         childrenContainer.innerHTML = '<div class="empty-state" style="padding: 8px 0;">Error loading rooms</div>';
       }
       
       spacesTree.appendChild(spaceHeader);
       spacesTree.appendChild(childrenContainer);
       
-      // Expand the first space by default
       if (spaces[0] === space) {
         toggleSpace(space.roomId);
       }
     }
   } catch (error) {
-    console.error('Failed to load spaces:', error);
+    console.error('Spaces load error:', error);
     showStatus(`Failed to load spaces: ${error.message}`, 'error');
   }
 }
 
-function getRoomDisplayName(room) {
-  if (!room) return 'Unknown Room';
-  if (room.canonicalAlias) return room.canonicalAlias;
-  if (room.name) return room.name;
-  return room.roomId || 'Unknown Room';
-}
-
-async function loadSpace(spaceId) {
-  try {
-    currentSpaceId = spaceId;
-    
-    const space = await matrixClient.getRoom(spaceId);
-    if (!space) throw new Error(`Space ${spaceId} not found`);
-    
-    const childrenData = await matrixClient.getSpaceChildren(spaceId);
-    const roomsList = document.getElementById('spaceRoomsList');
-    
-    if (!roomsList) return;
-    
-    roomsList.innerHTML = '';
-    
-    if (childrenData.children.length === 0) {
-      roomsList.innerHTML = '<div class="empty-state"><p>No rooms in this space</p></div>';
-      return;
-    }
-    
-    childrenData.children.forEach(child => {
-      console.log('child', child);
-      
-      const li = document.createElement('li');
-      li.className = 'room-item';
-      li.dataset.roomid = child.roomId;
-      
-      li.innerHTML = `
-        <div class="room-icon">
-          <i class="material-icons">#</i>
-        </div>
-        <div class="room-name">${child.name}</div>
-        <div class="room-members">${child.members || '?'}</div>
-      `;
-      
-      li.addEventListener('click', async () => {
-        await joinRoom(child.roomId);
-      });
-      
-      roomsList.appendChild(li);
-    });
-  } catch (error) {
-    console.error('Failed to load space:', error);
-    showStatus(`Failed to load space: ${error.message}`, 'error');
-  }
-}
 async function loadPublicRooms() {
   try {
-    const rooms = await matrixClient.publicRooms();
+    const publicRooms = await matrixClient.publicRooms();
     const roomsList = document.getElementById('publicRoomsList');
     roomsList.innerHTML = '';
     
-    if (rooms.chunk.length === 0) {
+    if (!publicRooms.chunk || publicRooms.chunk.length === 0) {
       roomsList.innerHTML = '<div class="empty-state"><p>No public rooms found</p></div>';
       return;
     }
     
-    // Fetch details for each public room
-    const roomDetailsPromises = rooms.chunk.map(room => 
-      matrixClient.getRoom(room.room_id).catch(() => null)
-    );
-    
-    const roomDetails = await Promise.all(roomDetailsPromises);
-    
-    // Filter out invalid rooms
-    const validRooms = roomDetails.filter(room => room !== null);
-    
-    if (validRooms.length === 0) {
-      roomsList.innerHTML = '<div class="empty-state"><p>No active rooms found</p></div>';
-      return;
+    for (const room of publicRooms.chunk) {
+      try {
+        const roomDetails = await matrixClient.getRoom(room.room_id);
+        if (!roomDetails) continue;
+        
+        const li = document.createElement('li');
+        li.className = 'room-item';
+        li.dataset.roomid = room.room_id;
+        li.innerHTML = `
+          <div class="room-icon">
+            <i class="material-icons">#</i>
+          </div>
+          <div class="room-name">${getRoomDisplayName(roomDetails)}</div>
+          <div class="room-members">${room.num_joined_members || '?'}</div>
+        `;
+        
+        li.addEventListener('click', async () => {
+          await joinRoom(room.room_id);
+        });
+        
+        roomsList.appendChild(li);
+      } catch (error) {
+        console.error(`Error loading public room ${room.room_id}:`, error);
+      }
     }
-    
-    validRooms.forEach(room => {
-      const li = document.createElement('li');
-      li.className = 'room-item';
-      li.dataset.roomid = room.roomId;
-      
-      // Get the best display name
-      const displayName = getRoomDisplayName(room);
-      
-      li.innerHTML = `
-        <div class="room-icon">
-          <i class="material-icons">#</i>
-        </div>
-        <div class="room-name">${displayName}</div>
-        <div class="room-members">${room.members || '?'}</div>
-      `;
-      
-      li.addEventListener('click', async () => {
-        await joinRoom(room.roomId);
-      });
-      
-      roomsList.appendChild(li);
-    });
   } catch (error) {
-    console.error('Failed to load public rooms:', error);
+    console.error('Public rooms load error:', error);
     showStatus(`Failed to load public rooms: ${error.message}`, 'error');
   }
 }
@@ -323,58 +230,49 @@ async function joinRoom(roomIdOrAlias) {
       item.classList.remove('active');
     });
 
-    // Only receive the room ID string from the joinRoom method
     const roomId = await matrixClient.joinRoom(roomIdOrAlias);
     currentRoomId = roomId;
     
-    // Now get room details separately
     const room = await matrixClient.getRoom(roomId);
-    const displayName = getRoomDisplayName(room);
-    document.getElementById('currentRoom').textContent = displayName;
+    document.getElementById('currentRoom').textContent = getRoomDisplayName(room);
     
-    // Enable message form
+    // Enable messaging
     document.getElementById('messageInput').disabled = false;
     document.querySelector('#messageForm button').disabled = false;
     
-    // Clear messages and show room
+    // Clear and load messages
     const messagesContainer = document.getElementById('messages');
     messagesContainer.innerHTML = '';
-    document.querySelector('.empty-state').classList.add('hidden');
+    emptyState.classList.add('hidden');
     
-    // Load initial messages
-    if (room && room.timeline) {
+    if (room?.timeline) {
       room.timeline.forEach(event => {
         if (event.type === 'm.room.message') {
           let body = event.body || '';
-          let msgType = event.msgtype || 'm.text';
           const isSelf = event.sender === currentUserId;
-          // Handle different message types
-          if (msgType === "m.image") {
+          
+          if (event.msgtype === "m.image") {
             body = `[Image: ${event.body || "Untitled"}]`;
-          } else if (msgType === "m.file") {
+          } else if (event.msgtype === "m.file") {
             body = `[File: ${event.body || "Untitled"}]`;
-          } else if (msgType === "m.emote") {
+          } else if (event.msgtype === "m.emote") {
             body = `* ${event.sender} ${event.body}`;
           }
           
-          addMessageToUI(event.sender, body, msgType, isSelf);
+          addMessageToUI(event.sender, body, event.msgtype, isSelf);
         }
       });
     }
     
-    // Load room members
+    // Load members
     loadRoomMembers(roomId);
-    
-    // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    // Add active class to the selected room
+    // Highlight active room
     const activeRoomItem = document.querySelector(`.room-item[data-roomid="${roomId}"]`);
-    if (activeRoomItem) {
-      activeRoomItem.classList.add('active');
-    }
+    if (activeRoomItem) activeRoomItem.classList.add('active');
   } catch (error) {
-    console.error('Failed to join room:', error);
+    console.error('Join room error:', error);
     showStatus(`Failed to join room: ${error.message}`, 'error');
   }
 }
@@ -383,19 +281,13 @@ function addMessageToUI(sender, message, type = 'm.text', isSelf = false) {
   const displayText = typeof message === 'string' ? message : '[Non-text message]';
   const messagesContainer = document.getElementById('messages');
   
-  // Hide empty state if it's visible
-  document.querySelector('.empty-state').classList.add('hidden');
+  emptyState.classList.add('hidden');
   
-  // Create message element
   const messageElement = document.createElement('div');
   messageElement.className = `message ${isSelf ? 'self' : 'other'}`;
   
-  // Format sender name
   const senderName = isSelf ? 'You' : sender.split(':')[0].substring(1);
-  
-  // Format time
-  const now = new Date();
-  const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   messageElement.innerHTML = `
     <div class="message-sender">${senderName}</div>
@@ -404,8 +296,6 @@ function addMessageToUI(sender, message, type = 'm.text', isSelf = false) {
   `;
   
   messagesContainer.appendChild(messageElement);
-  
-  // Scroll to bottom
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
@@ -414,40 +304,84 @@ async function loadRoomMembers(roomId) {
     const peopleList = document.getElementById('peopleList');
     peopleList.innerHTML = '';
     
-    // Get room members
-    const room = await matrixClient.getRoom(roomId);
-    if (!room || !room.members) {
+    const members = await matrixClient.getRoomMembers(roomId);
+    
+    if (!members || members.length === 0) {
       peopleList.innerHTML = '<div class="empty-state"><p>No members found</p></div>';
       return;
     }
     
-    // Add members to list
-    room.members.forEach(member => {
+    members.forEach(member => {
       const li = document.createElement('li');
       li.className = 'person-item';
       
-      // Get first letter of username for avatar
-      const username = member.split(':')[0].substring(1);
-      const firstLetter = username.charAt(0).toUpperCase();
+      const firstLetter = member.displayName.charAt(0).toUpperCase();
       
       li.innerHTML = `
         <div class="person-avatar">${firstLetter}</div>
-        <div class="person-name">${username}</div>
+        <div class="person-name">${member.displayName}</div>
         <div class="person-status"></div>
       `;
+      
+      li.addEventListener('click', () => {
+        showUserInfo(member);
+      });
       
       peopleList.appendChild(li);
     });
   } catch (error) {
-    console.error('Failed to load room members:', error);
+    console.error('Room members load error:', error);
+    peopleList.innerHTML = '<div class="empty-state"><p>Error loading members</p></div>';
   }
 }
 
 function showStatus(message, type = 'info') {
   const statusEl = document.getElementById('roomJoinStatus');
+  if (!statusEl) return;
+  
   statusEl.textContent = message;
   statusEl.className = `status-message status-${type}`;
+  
+  // Clear status after 3 seconds
+  if (type !== 'info') {
+    setTimeout(() => {
+      statusEl.textContent = '';
+      statusEl.className = 'status-message';
+    }, 3000);
+  }
 }
+
+function showUserInfo(member) {
+  currentMemberInfo = member;
+  
+  const popup = document.getElementById('userPopup');
+  const avatar = document.getElementById('popupAvatar');
+  const username = document.getElementById('popupUsername');
+  const userId = document.getElementById('popupUserId');
+  
+  // Set first letter for avatar
+  const firstLetter = member.displayName.charAt(0).toUpperCase();
+  avatar.textContent = firstLetter;
+  
+  // Set user info
+  username.textContent = member.displayName;
+  userId.textContent = member.userId;
+  
+  // Show popup
+  popup.classList.remove('hidden');
+}
+
+// close the popup
+document.getElementById('closePopup').addEventListener('click', () => {
+  document.getElementById('userPopup').classList.add('hidden');
+});
+
+// close when clicking outside popup
+document.getElementById('userPopup').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('userPopup')) {
+    document.getElementById('userPopup').classList.add('hidden');
+  }
+});
 
 document.getElementById('messageForm').onsubmit = async (e) => {
   e.preventDefault();
@@ -457,12 +391,11 @@ document.getElementById('messageForm').onsubmit = async (e) => {
   if (message && currentRoomId) {
     try {
       await matrixClient.sendMessage(currentRoomId, message);
-      // Add our own message to UI immediately
-      addMessageToUI(matrixClient.getUserId(), message, 'm.text', true);
+      addMessageToUI(currentUserId, message, 'm.text', true);
       messageInput.value = '';
       messageInput.focus();
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Message send error:', error);
       showStatus(`Failed to send message: ${error.message}`, 'error');
     }
   }
@@ -473,14 +406,13 @@ document.getElementById('createSpaceButton').addEventListener('click', async (e)
   const spaceName = prompt('Enter space name:');
   if (spaceName) {
     try {
-      const spaceId = await matrixClient.createSpace(spaceName);
-      showStatus(`Space ${spaceName} created!`, 'success');
-      loadSpaces();
+      // This requires implementing createSpace in main/preload
+      showStatus(`Space creation not implemented yet`, 'warning');
     } catch (error) {
       showStatus(`Failed to create space: ${error.message}`, 'error');
     }
   }
 });
 
-// Initially hide the app container
+// Initially hide app container
 document.querySelector('.app-container').style.display = 'none';

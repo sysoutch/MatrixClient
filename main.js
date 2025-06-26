@@ -169,6 +169,17 @@ function createWindow() {
   win.loadFile('index.html');
 }
 
+ipcMain.handle('matrix-getRoomMembers', (_, baseUrl, roomId) => {
+  const client = getClient(baseUrl);
+  const room = client.getRoom(roomId);
+  if (!room) return [];
+  
+  return room.getJoinedMembers().map(member => ({
+    userId: member.userId,
+    displayName: member.rawDisplayName || member.userId.split(':')[0].substring(1)
+  }));
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
