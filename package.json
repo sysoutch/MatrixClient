@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "main.js",
   "dependencies": {
+    "@electron-fonts/material-icons": "^1.2.0",
     "@electron/remote": "^2.1.2",
+    "@mdi/js": "^7.4.47",
     "another-json": "^0.2.0",
     "base-x": "^5.0.1",
     "boolean": "^3.2.0",
@@ -19,8 +21,6 @@
     "define-data-property": "^1.1.4",
     "define-properties": "^1.2.1",
     "detect-node": "^2.1.0",
-    "electron": "^37.0.0",
-    "electron-builder": "^26.0.12",
     "electron-builder-squirrel-windows": "^24.13.3",
     "electron-publish": "^24.13.1",
     "end-of-stream": "^1.4.5",
@@ -101,6 +101,8 @@
   "devDependencies": {
     "@types/electron": "^1.6.12",
     "@types/node": "^24.0.4",
+    "electron": "^37.1.0",
+    "electron-builder": "^26.0.12",
     "typescript": "^5.8.3"
   },
   "repository": {

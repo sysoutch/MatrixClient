@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('matrix', {
       joinRoom: (roomId) => ipcRenderer.invoke('matrix-joinRoom', baseUrl, roomId),
       sendMessage: (roomId, message) => 
         ipcRenderer.invoke('matrix-sendMessage', baseUrl, roomId, message),
+      invite: (roomId, userId) => ipcRenderer.invoke('matrix-invite', baseUrl, roomId, userId),
       
       // Event handlers
       onSync: (callback) => {
@@ -28,7 +29,8 @@ contextBridge.exposeInMainWorld('matrix', {
       getStoredRooms: () => ipcRenderer.invoke('matrix-getStoredRooms', baseUrl),
       getRoom: (roomId) => ipcRenderer.invoke('matrix-getRoom', baseUrl, roomId),
 
-      getRoomMembers: (roomId) => ipcRenderer.invoke('matrix-getRoomMembers', baseUrl, roomId)
+      getRoomMembers: (roomId) => ipcRenderer.invoke('matrix-getRoomMembers', baseUrl, roomId),
+      getPresence: (baseUrl, userId) => ipcRenderer.invoke('matrix-getPresence', baseUrl, userId)
     };
   }
 });

@@ -1,5 +1,6 @@
 require('@electron/remote/main').initialize();
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { mdiAccount } = require('@mdi/js');
 const path = require('path');
 const sdk = require('matrix-js-sdk');
 
@@ -45,6 +46,23 @@ function getClient(baseUrl) {
     });
   }
   return clients.get(baseUrl);
+}
+
+function mxcToHttp(client, mxcUrl) {
+  if (!mxcUrl || !mxcUrl.startsWith('mxc://')) return null;
+  
+  const server = client.getHomeserverUrl();
+  const parts = mxcUrl.substring(6).split('/');
+  if (parts.length !== 2) return null;
+  
+  return `${server}/_matrix/media/r0/thumbnail/${parts[0]}/${parts[1]}?width=64&height=64&method=scale`;
+}
+
+function getRoomAvatarUrl(room) {
+  if (!room) return null;
+  const avatarEvent = room.currentState.getStateEvents('m.room.avatar', '');
+  if (!avatarEvent || !avatarEvent.getContent().url) return null;
+  return avatarEvent.getContent().url;
 }
 
 // Improved publicRooms with better error handling
@@ -109,31 +127,48 @@ ipcMain.handle('matrix-getSpaceChildren', (_, baseUrl, spaceId) => {
   
   return {
     children: space.currentState.getStateEvents('m.space.child')
-      .map(event => ({
-        roomId: event.getStateKey(),
-        name: event.getContent().name || event.getStateKey(),
-        type: event.getContent().type || 'm.room'
-      }))
+      .map(event => {
+        const roomId = event.getStateKey();
+        const room = client.getRoom(roomId);
+        const mxcUrl = room ? getRoomAvatarUrl(room) : null;
+        const avatarUrl = mxcUrl ? mxcToHttp(client, mxcUrl) : null;
+        
+        return {
+          roomId: roomId,
+          name: event.getContent().name || (room ? room.name : roomId),
+          type: event.getContent().type || 'm.room',
+          avatarUrl: avatarUrl
+        };
+      })
   };
 });
 
 ipcMain.handle('matrix-getStoredRooms', (_, baseUrl) => {
   const client = getClient(baseUrl);
-  return client.getRooms().map(room => ({
-    roomId: room.roomId,
-    name: room.name,
-    type: room.getType(),
-    members: room.getJoinedMemberCount(),
-    unread: room.getUnreadNotificationCount(),
-    lastMessage: room.timeline.length > 0 ? 
-      room.timeline[room.timeline.length - 1].getContent().body : ''
-  }));
+  return client.getRooms().map(room => {
+    const mxcUrl = getRoomAvatarUrl(room);
+    const avatarUrl = mxcUrl ? mxcToHttp(client, mxcUrl) : null;
+    
+    return {
+      roomId: room.roomId,
+      name: room.name,
+      type: room.getType(),
+      members: room.getJoinedMemberCount(),
+      unread: room.getUnreadNotificationCount(),
+      lastMessage: room.timeline.length > 0 ? room.timeline[room.timeline.length - 1].getContent().body : '',
+      avatarUrl: avatarUrl
+    };
+  });
 });
 
 ipcMain.handle('matrix-getRoom', (_, baseUrl, roomId) => {
   const client = getClient(baseUrl);
   const room = client.getRoom(roomId);
   if (!room) return null;
+  
+  const mxcUrl = getRoomAvatarUrl(room);
+  const avatarUrl = mxcUrl ? mxcToHttp(client, mxcUrl) : null;
+  
   return {
     roomId: room.roomId,
     name: room.name,
@@ -142,9 +177,10 @@ ipcMain.handle('matrix-getRoom', (_, baseUrl, roomId) => {
       .map(event => ({
         sender: event.getSender(),
         body: event.getContent().body,
-        type: event.getType(),
+        type: event.getContent().msgtype,
         timestamp: event.getTs()
-      }))
+      })),
+    avatarUrl: avatarUrl
   };
 });
 
@@ -155,16 +191,22 @@ ipcMain.handle('matrix-getUserId', (_, baseUrl) => {
 
 function createWindow() {
   const win = new BrowserWindow({
+    icon: path.join(__dirname, 'images/icon.png'),
     autoHideMenuBar: true,
     width: 1000,
     height: 800,
+    titleBarOverlay: {
+      color: '#2a455c',
+      symbolColor: '#fff'
+    },
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true
     }
   });
-  
+
   require('@electron/remote/main').enable(win.webContents);
   win.loadFile('index.html');
 }
@@ -174,10 +216,45 @@ ipcMain.handle('matrix-getRoomMembers', (_, baseUrl, roomId) => {
   const room = client.getRoom(roomId);
   if (!room) return [];
   
-  return room.getJoinedMembers().map(member => ({
-    userId: member.userId,
-    displayName: member.rawDisplayName || member.userId.split(':')[0].substring(1)
-  }));
+  return room.getJoinedMembers().map(member => {
+    let avatarUrl = null;
+    
+    // Get avatar URL if exists
+    const avatarEvent = room.currentState.getStateEvents('m.room.member', member.userId);
+    if (avatarEvent && avatarEvent.getContent().avatar_url) {
+      const mxcUrl = avatarEvent.getContent().avatar_url;
+      const server = client.getHomeserverUrl();
+      
+      // Convert mxc:// to https:// URL
+      if (mxcUrl.startsWith('mxc://')) {
+        const parts = mxcUrl.substring(6).split('/');
+        if (parts.length === 2) {
+          avatarUrl = `${server}/_matrix/media/r0/thumbnail/${parts[0]}/${parts[1]}?width=64&height=64&method=scale`;
+        }
+      }
+    }
+    
+    return {
+      userId: member.userId,
+      displayName: member.rawDisplayName || member.userId.split(':')[0].substring(1),
+      avatarUrl: avatarUrl
+    };
+  });
+});
+
+ipcMain.handle('matrix-getPresence', async (_, baseUrl, userId) => {
+  const client = getClient(baseUrl);
+  try {
+    const presence = await client.getPresence(userId);
+    return presence.presence; // 'online', 'offline', or 'unavailable'
+  } catch (e) {
+    return 'offline';
+  }
+});
+
+ipcMain.handle('matrix-invite', async (_, baseUrl, roomId, userId) => {
+  const client = getClient(baseUrl);
+  return client.invite(roomId, userId);
 });
 
 app.whenReady().then(createWindow);
