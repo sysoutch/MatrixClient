@@ -357,10 +357,20 @@ async function loadSpaces() {
       nameDiv.textContent = space.name || space.roomId;
       spaceHeader.appendChild(nameDiv);
       
-      const membersDiv = document.createElement('div');
-      membersDiv.className = 'space-members';
-      membersDiv.textContent = space.members;
+      const roomsDiv = document.createElement('button');
+      roomsDiv.className = 'icon-button';
+      roomsDiv.textContent = `#️⃣0`;
+      spaceHeader.appendChild(roomsDiv);
+      
+      const membersDiv = document.createElement('button');
+      membersDiv.className = 'icon-button';
+      membersDiv.textContent = `🧑${space.members}`;
       spaceHeader.appendChild(membersDiv);
+
+      const addSpaceOrRoomDiv = document.createElement('button');
+      addSpaceOrRoomDiv.className = 'icon-button';
+      addSpaceOrRoomDiv.textContent = '⋮';
+      spaceHeader.appendChild(addSpaceOrRoomDiv);
       
       const childrenContainer = document.createElement('div');
       childrenContainer.className = 'space-children';
@@ -372,7 +382,7 @@ async function loadSpaces() {
         const childrenData = await matrixClient.getSpaceChildren(space.roomId);
         const roomsList = document.createElement('ul');
         roomsList.className = 'room-list';
-        
+        let roomCount = 0;
         if (childrenData.children.length === 0) {
           roomsList.innerHTML = '<div class="empty-state" style="padding: 8px 0;">No rooms</div>';
         } else {
@@ -380,7 +390,7 @@ async function loadSpaces() {
             try {
               const roomDetails = await matrixClient.getRoom(child.roomId);
               if (!roomDetails) continue;
-              
+              roomCount++;
               const li = document.createElement('li');
               li.className = 'room-item';
               li.dataset.roomid = child.roomId;
@@ -419,6 +429,7 @@ async function loadSpaces() {
             }
           }
         }
+        roomsDiv.textContent = `#️⃣${roomCount}`;
         childrenContainer.appendChild(roomsList);
       } catch (error) {
         console.error(`Space children error:`, error);
@@ -560,23 +571,62 @@ async function joinRoom(roomIdOrAlias) {
 }
 
 function addMessageToUI(sender, message, type = 'm.text', isSelf = false) {
-  const displayText = typeof message === 'string' ? message : '[Non-text message]';
   const messagesContainer = document.getElementById('messages');
-  
-  emptyState.classList.add('hidden');
   
   const messageElement = document.createElement('div');
   messageElement.className = `message ${isSelf ? 'self' : 'other'}`;
-  
+
   const senderName = isSelf ? 'You' : sender.split(':')[0].substring(1);
   const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
+
+  let contentHtml = '';
+
+  // Handle image messages
+  if (type === 'm.image' && message) {
+    const content = message;
+    
+    console.log(`content: ${content}`);
+    console.log(`content.url: ${content.url}`);
+    if (content.url && content.url.startsWith('mxc://')) {
+      // Use SDK method for proper URL conversion
+      const imageUrl = matrixClient.mxcUrlToHttp(content.url);
+      
+      if (imageUrl) {
+        contentHtml = `
+          <img src="${imageUrl}" 
+               alt="${content.body || 'Shared image'}" 
+               class="matrix-image"
+               onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\'image-error\'>Failed to load image</div>'">
+          ${content.body ? `<div class="filename">${content.body}</div>` : ''}
+        `;
+      } else {
+        contentHtml = '<div class="image-error">[Invalid image URL]</div>';
+      }
+    } else if (content.url) {
+      // Fallback for direct URLs
+      contentHtml = `<img src="${content.url}" alt="Shared image" class="matrix-image">`;
+    } else {
+      contentHtml = '<div class="image-error">[Image missing]</div>';
+    }
+  } 
+  // Handle text messages
+  else {
+    const displayText = typeof message === 'string' 
+      ? message 
+      : (message?.body || '[Unsupported message type]');
+    
+    // Basic HTML escaping for text messages
+    contentHtml = `<div class="message-content">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+  }
+
   messageElement.innerHTML = `
-    <div class="message-sender">${senderName}</div>
-    <div class="message-content">${displayText}</div>
-    <div class="message-time">${timeString}</div>
+    <div class="message-header">
+      <span class="message-sender">${senderName}</span>
+      <span class="message-time">${timeString}</span>
+    </div>
+    <div class="message-body">${contentHtml}</div>
   `;
-  
+
   messagesContainer.appendChild(messageElement);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
